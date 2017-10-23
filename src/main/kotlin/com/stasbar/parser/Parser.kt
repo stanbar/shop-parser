@@ -1,3 +1,18 @@
+/*
+ * Copyright (c) Stanislaw stasbar Baranski 2017.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.stasbar.parser
 
 import com.stasbar.parser.data.Category
@@ -84,20 +99,30 @@ fun fetchProductsFor(category: Category): HashSet<Product> {
                 val product = Product(id, name, category, priceDouble)
                 fetchAndfillWithDetails(product)
                 products.add(product)
+                log(product)
             } catch (e: NullPointerException) {
                 println("Failed to parse ${it.baseUri()}")
                 e.printStackTrace()
             }
         }
-        products.forEach { log(it) }
 
-        upperBound = getUpperBound(doc)
-        totalElements = getTotalElements(doc)
-        if (upperBound < totalElements) {
-            doc = Jsoup.connect("$BASE_URL/index.php?cPath=${category.id}&page=${++page}").get()
-            hasNextPage = true
-        } else
+        try {
+            upperBound = getUpperBound(doc)
+            totalElements = getTotalElements(doc)
+            if (upperBound < totalElements) {
+                doc = Jsoup.connect("$BASE_URL/index.php?cPath=${category.id}&page=${++page}").get()
+                hasNextPage = true
+            } else
+                hasNextPage = false
+        } catch (e: NullPointerException) {
+            println("${doc.baseUri()}")
             hasNextPage = false
+            e.printStackTrace()
+
+
+
+        }
+
 
     }
     return products
@@ -122,8 +147,8 @@ fun fetchAndfillWithDetails(product: Product) {
 
     val doc = Jsoup.connect("$BASE_URL/product_info.php?cPath=${product.category.id}&products_id=${product.id}").get()
     try {
-        val selection1 = doc.select("#contentLT")
-        val sel2 = selection1.select("form")
+        val sel1 = doc.select("#contentLT")
+        val sel2 = sel1.select("form")
         val sel3 = sel2.select("table")
         val sel4 = sel3.select("tbody")
         val sel5 = sel4.select("tr:nth-child(3)")
@@ -132,9 +157,11 @@ fun fetchAndfillWithDetails(product: Product) {
         val sel8 = sel7.select("tbody")
         val sel9 = sel8.select("tr")
         val sel10 = sel9.select("td")
-        val sel11a = sel10.select("a")
-        if (sel11a.isNotEmpty())
-            product.imgSrc = sel11a[0].attr("href")
+        val sel11 = sel10.select("a")
+        //val sel11a = doc.select("#contentLT > form > table > tbody > tr:nth-child(3) > td > table > tbody > tr > td > a") Why it doesn't work ?
+
+        if (sel11.isNotEmpty())
+            product.imgSrc = sel11[0].attr("href")
         val descSelection = doc.select("#contentLT > form > table > tbody > tr:nth-child(3) > td")
         if (descSelection.isNotEmpty())
             product.description = descSelection[0].child(6).html()
