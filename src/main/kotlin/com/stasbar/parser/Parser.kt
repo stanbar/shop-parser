@@ -15,6 +15,7 @@
 
 package com.stasbar.parser
 
+import com.stasbar.parser.CsvConverter.saveToFile
 import com.stasbar.parser.data.Category
 import com.stasbar.parser.data.Product
 import org.jsoup.Jsoup
@@ -23,16 +24,54 @@ import org.jsoup.nodes.Element
 import java.io.UnsupportedEncodingException
 import java.net.URLDecoder
 import java.util.*
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.collections.HashSet
 import kotlin.system.measureTimeMillis
 
 
 val MODE = Modes.DEBUG
 val BASE_URL = "http://www.esc.pl"
+val totalProductsParseCounter: AtomicInteger = AtomicInteger(0)
+val totalCategoriesParseCounter: AtomicInteger = AtomicInteger(0)
 fun main(args: Array<String>) {
 
     val categories = fetchCategories()
+    saveToFile(categories)
+
+
+    val products = parseProducts(categories)
+    saveToFile(products)
+
+}
+
+
+fun fetchCategories(): List<Category> {
+    val doc = Jsoup.connect("$BASE_URL/advanced_search.php").get()
+    val categoriesOptions = doc.select("#contentLT > form > table > tbody > tr:nth-child(7) > td > table " +
+            "> tbody > tr > td > table > tbody > tr:nth-child(1) > td.fieldValue > select > option")
+
+    return categoriesOptions.filter {
+        it.attr("value").isNotEmpty() && isSubcategory(it)
+    }.map {
+        val id = it.attr("value").toInt()
+        val name = it.childNode(0).toString()
+
+        log("Parsed ${totalCategoriesParseCounter.incrementAndGet()} category")
+        Category(id, name)
+    }.toList()
+}
+
+fun isSubcategory(element: Element): Boolean {
+    val spaces = element.childNode(0).toString().substringBeforeLast(" ").count()
+    if (element.nextElementSibling() == null) return true // Is the last category
+    val spacesNext = element.nextElementSibling().childNode(0).toString().substringBeforeLast(" ").count()
+    return spacesNext <= spaces //It has no subcategories
+}
+
+fun parseProducts(categories: List<Category>): List<Product> {
+
     val time = measureTimeMillis {
+
         categories.parallelStream().forEach {
             it.products = fetchProductsFor(it)
             log("Added ${it.products.size} elements to ${it.name}")
@@ -41,26 +80,11 @@ fun main(args: Array<String>) {
 
     log("Parsed $BASE_URL in $time sec")
 
-}
-
-fun fetchCategories(): Set<Category> {
-    val doc = Jsoup.connect("$BASE_URL/advanced_search.php").get()
-    val categoriesOptions = doc.select("#contentLT > form > table > tbody > tr:nth-child(7) > td > table > tbody > tr > td > table > tbody > tr:nth-child(1) > td.fieldValue > select > option")
-
-    return categoriesOptions.filter {
-        it.attr("value").isNotEmpty() && isSubcategory(it)
-    }.map {
-        val id = it.attr("value").toInt()
-        val name = it.childNode(0).toString()
-        Category(id, name)
-    }.toSet()
-}
-
-fun isSubcategory(element: Element): Boolean {
-    val spaces = element.childNode(0).toString().substringBeforeLast(" ").count()
-    if (element.nextElementSibling() == null) return true // Is the last category
-    val spacesNext = element.nextElementSibling().childNode(0).toString().substringBeforeLast(" ").count()
-    return spacesNext <= spaces //It has no subcategories
+    val products = ArrayList<Product>()
+    categories.forEach {
+        products.addAll(it.products)
+    }
+    return products
 }
 
 fun fetchProductsFor(category: Category): HashSet<Product> {
@@ -94,12 +118,15 @@ fun fetchProductsFor(category: Category): HashSet<Product> {
                 val name = it.select("#productListing-pic > a").first().childNode(0).toString()
                 val priceSelect = it.select(".productListing-data > b").first()
                 val priceString = priceSelect.childNode(0).toString()
-                val replaced = priceString.replace(",", ".").replace("[^.0123456789]".toRegex(), "")
+                val replaced = priceString
+                        .replace(",", ".")
+                        .replace("[^.0123456789]".toRegex(), "")
+
                 val priceDouble = replaced.toDouble()
                 val product = Product(id, name, category, priceDouble)
                 fetchAndfillWithDetails(product)
                 products.add(product)
-                log(product)
+                log("Parsed ${totalProductsParseCounter.incrementAndGet()} $product")
             } catch (e: NullPointerException) {
                 println("Failed to parse ${it.baseUri()}")
                 e.printStackTrace()
@@ -120,7 +147,6 @@ fun fetchProductsFor(category: Category): HashSet<Product> {
             e.printStackTrace()
 
 
-
         }
 
 
@@ -129,18 +155,21 @@ fun fetchProductsFor(category: Category): HashSet<Product> {
 }
 
 fun isCategoryNotEmpty(doc: Document) = try {
-    doc.select("#contentLT > table > tbody > tr:nth-child(4) > td > table:nth-child(3) > tbody > tr > td:nth-child(1) > b:nth-child(2)").first()
+    doc.select("#contentLT > table > tbody > tr:nth-child(4) > td > table:nth-child(3) > tbody > tr " +
+            "> td:nth-child(1) > b:nth-child(2)").first()
     true
 } catch (e: NullPointerException) {
     false
 }
 
 fun getUpperBound(doc: Document): Int {
-    return doc.select("#contentLT > table > tbody > tr:nth-child(4) > td > table:nth-child(3) > tbody > tr > td:nth-child(1) > b:nth-child(2)").first().text().toInt()
+    return doc.select("#contentLT > table > tbody > tr:nth-child(4) > td > table:nth-child(3) > tbody > tr " +
+            "> td:nth-child(1) > b:nth-child(2)").first().text().toInt()
 }
 
 fun getTotalElements(doc: Document): Int {
-    return doc.select("#contentLT > table > tbody > tr:nth-child(4) > td > table:nth-child(3) > tbody > tr > td:nth-child(1) > b:nth-child(3)").first().text().toInt()
+    return doc.select("#contentLT > table > tbody > tr:nth-child(4) > td > table:nth-child(3) > tbody > tr " +
+            "> td:nth-child(1) > b:nth-child(3)").first().text().toInt()
 }
 
 fun fetchAndfillWithDetails(product: Product) {
@@ -158,16 +187,18 @@ fun fetchAndfillWithDetails(product: Product) {
         val sel9 = sel8.select("tr")
         val sel10 = sel9.select("td")
         val sel11 = sel10.select("a")
-        //val sel11a = doc.select("#contentLT > form > table > tbody > tr:nth-child(3) > td > table > tbody > tr > td > a") Why it doesn't work ?
+        //val sel11a = doc.select("#contentLT > form > table > tbody > tr:nth-child(3) > td > table > tbody > tr
+        // > td > a") Why it doesn't work ?
 
         if (sel11.isNotEmpty())
             product.imgSrc = sel11[0].attr("href")
         val descSelection = doc.select("#contentLT > form > table > tbody > tr:nth-child(3) > td")
         if (descSelection.isNotEmpty())
-            product.description = descSelection[0].child(6).html()
+            product.description = descSelection[0].text()
     } catch (e: NullPointerException) {
         println("Failed to parse ${doc.baseUri()}")
         e.printStackTrace()
+        println("Who cares ? Skipping...")
     }
 }
 
@@ -178,7 +209,8 @@ fun splitQuery(query: String): Map<String, String> {
     val pairs = query.split("&".toRegex()).dropLastWhile({ it.isEmpty() }).toTypedArray()
     for (pair in pairs) {
         val idx = pair.indexOf("=")
-        queryPairs.put(URLDecoder.decode(pair.substring(0, idx), "UTF-8"), URLDecoder.decode(pair.substring(idx + 1), "UTF-8"))
+        queryPairs.put(URLDecoder.decode(pair.substring(0, idx), "UTF-8")
+                , URLDecoder.decode(pair.substring(idx + 1), "UTF-8"))
     }
     return queryPairs
 }

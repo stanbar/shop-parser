@@ -15,4 +15,22 @@
 
 package com.stasbar.parser.data
 
-data class Product(val id: String, val name: String, var category: Category, var price : Double = 0.0,var imgSrc: String = "", var description : String = "")
+import java.util.*
+
+
+data class Product(val id: String, val name: String, var category: Category, var price: Double = 0.0,
+                   var imgSrc: String = "", var description: String = "") : Csvable {
+    /**
+     * Schema
+     * ID , Active(0/1) , Name , Categories (x,y,z), Price , Description, ImgSrc
+     */
+    override fun getTitle(): List<String> {
+        return Arrays.asList<String>("ID", "Active(0/1)", "Name", "Categories (xyz)", "Price", "Description", "ImgSrc")
+    }
+
+    override fun toCsv(): List<String> {
+        return Arrays.asList<String>(id, 1.toString(), name, category.id.toString(), price.toString(), description, imgSrc)
+    }
+    override val fileNamePrefix = "products"
+
+}

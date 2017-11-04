@@ -15,24 +15,8 @@
 
 package com.stasbar.parser.data
 
-import java.util.*
-
-
-data class Category(val id: Int, val name: String, var products: Set<Product> = HashSet()) : Csvable {
-
-    /**
-     * Schema
-     * ID , Active(0/1) , Name , Parent category , Root category (0/1) , Description
-     */
-    override fun getTitle(): List<String> {
-        return Arrays.asList<String>("ID", "Active(0/1)", "Name", "Parent category", "Root category (0/1)")
-    }
-
-    override fun toCsv(): List<String> {
-        return Arrays.asList<String>("$id", "1", name.replace("&nbsp;",""), "Home", "0")
-    }
-    override val fileNamePrefix = "categories"
-
-
+interface Csvable {
+    fun getTitle() : List<String>
+    fun toCsv(): List<String>
+    val fileNamePrefix : String
 }
-

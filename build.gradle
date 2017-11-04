@@ -43,6 +43,7 @@ dependencies {
     compile 'org.jsoup:jsoup:1.10.3'
     compile 'org.jetbrains.kotlinx:kotlinx-coroutines-core:0.19.2'
     compile 'us.codecraft:xsoup:0.3.2-SNAPSHOT'
+
 }
 
 compileKotlin {
